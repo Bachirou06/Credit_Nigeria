@@ -1,0 +1,22 @@
+name: credit_env
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - geopandas
+  - pandas
+  - numpy
+  - pyproj
+  - shapely
+  - rasterio
+  - gdal
+  - fiona
+  - affine
+  - scipy
+  - matplotlib
+  - pysal
+  - pip
+  - pip:
+      - earthpy
+      - rasterstats

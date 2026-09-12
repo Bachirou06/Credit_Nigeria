@@ -1,0 +1,39 @@
+# GIS raster and vector data
+*.tif
+*.tiff
+*.tif.aux.xml
+*.aux.xml
+*.nc
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+*.sbn
+*.sbx
+*.xlsx
+*.zip
+
+# CSV data
+*.csv
+
+# Known data / scratch folders
+GDP_data/
+poverty_data/
+sample_output/
+admin/
+tmp/
+data/
+results/
+
+# Jupyter / Python artifacts
+.ipynb_checkpoints/
+.virtual_documents/
+__pycache__/
+*.pyc
+venv/
+env/
+
+# OS clutter
+.DS_Store
+Thumbs.db
