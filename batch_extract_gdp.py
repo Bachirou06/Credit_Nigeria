@@ -6,8 +6,8 @@ Requires extract_country_gdp() (and its helpers) already defined in your session
 
 Usage:
     results = batch_extract_gdp(
-        countries=["Guinea", "Malawi", "Senegal"],
-        years=[2015, 2024],
+        countries=["Nigeria"],
+        years=[2024],   # latest Kummu v4 year only
     )
     results  # a pandas DataFrame summarizing totals, valid pixel counts, output paths
 """
