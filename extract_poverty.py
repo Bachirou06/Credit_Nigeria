@@ -156,13 +156,29 @@ def country_iso3(country: str) -> str:
     )
 
 
+# HDX slugs that deviate from the standard '<name>-mpi' auto-generation pattern.
+HDX_SLUG_OVERRIDES = {
+    "cod": "democratic-republic-of-the-congo-mpi",
+    "congo, democratic republic of the": "democratic-republic-of-the-congo-mpi",
+    "congo, the democratic republic of the": "democratic-republic-of-the-congo-mpi",
+    "democratic republic of the congo": "democratic-republic-of-the-congo-mpi",
+    "drc": "democratic-republic-of-the-congo-mpi",
+}
+
+
 def country_dataset_slug(country: str) -> str:
     """
     Build the HDX dataset slug for a country's subnational MPI dataset,
-    following HDX's observed pattern: '<country-name-lowercase-hyphenated>-mpi'
+    following HDX's observed pattern: "<country-name-lowercase-hyphenated>-mpi"
     e.g. 'Niger' -> 'niger-mpi', 'Burkina Faso' -> 'burkina-faso-mpi'.
+    Countries whose slug deviates from this pattern are listed in HDX_SLUG_OVERRIDES.
     """
+    key = country.strip().lower()
+    if key in HDX_SLUG_OVERRIDES:
+        return HDX_SLUG_OVERRIDES[key]
     official_name = normalize_country(country)
+    if official_name.lower() in HDX_SLUG_OVERRIDES:
+        return HDX_SLUG_OVERRIDES[official_name.lower()]
     slug_base = official_name.lower().strip()
     slug_base = slug_base.replace("'", "").replace(",", "")
     slug_base = "-".join(slug_base.split())
