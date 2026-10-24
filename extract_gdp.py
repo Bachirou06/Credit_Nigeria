@@ -1,14 +1,19 @@
 """
-General-purpose Kummu v4 GDP extractor.
+GDP extraction pipeline for Nigeria (NGA) — Kummu v4 dataset.
 
-Call with just a country name (or ISO3 code) and a year — the boundary is fetched
-automatically from geoBoundaries, no local shapefile needed, and no need to call
-preprocess_kummu_gdp_tif_windowed / get_country_boundary manually each time.
+Combines:
+  - General-purpose country GDP extractor (any country by name or ISO3 code)
+  - Batch extraction across multiple countries/years
+  - Nigeria-specific extraction (NGA, 2024 only)
 
-Usage:
-    da = extract_country_gdp("Guinea", 2015)
-    da = extract_country_gdp("Malawi", 2024)
-    da = extract_country_gdp("GIN", 2020)          # ISO3 codes also work directly
+Boundary fetched automatically from the geoBoundaries API — no local shapefile needed.
+
+Usage (general):
+    from extract_gdp import extract_country_gdp, batch_extract_gdp
+    da = extract_country_gdp("NGA", 2024, gdp_path=r"C:\...\GDP_data")
+
+Usage (Nigeria-specific, run as script):
+    python extract_gdp.py
 """
 
 import os
@@ -19,6 +24,7 @@ import numpy as np
 import xarray as xr
 import geopandas as gpd
 import rioxarray as rxr
+import pandas as pd
 
 try:
     import pycountry
@@ -26,26 +32,24 @@ except ImportError:
     pycountry = None
 
 
-# --- Simple in-memory cache so repeated calls for the same country don't re-download the boundary ---
+# ---------------------------------------------------------------------------
+# Boundary cache — avoids re-downloading the same boundary in one session
+# ---------------------------------------------------------------------------
 _boundary_cache = {}
 
 
 def _resolve_iso3(country: str) -> str:
-    """
-    Accepts either a country name ('Guinea') or an ISO3 code ('GIN') and returns
-    the ISO3 code. Requires the `pycountry` package for name lookup.
-    """
+    """Accepts a country name ('Nigeria') or ISO3 code ('NGA') and returns the ISO3 code."""
     country = country.strip()
     if len(country) == 3 and country.isalpha() and country.isupper():
-        return country  # already looks like an ISO3 code
+        return country
 
     if pycountry is None:
         raise ImportError(
             "pycountry is required for country-name lookup. "
             "Install it with: pip install pycountry\n"
-            "Or pass the ISO3 code directly, e.g. extract_country_gdp('GIN', 2015)"
+            "Or pass the ISO3 code directly, e.g. extract_country_gdp('NGA', 2024)"
         )
-
     try:
         matches = pycountry.countries.search_fuzzy(country)
         iso3 = matches[0].alpha_3
@@ -63,45 +67,36 @@ def _get_country_boundary(iso3: str, adm_level: str = "ADM0") -> gpd.GeoDataFram
 
     api_url = f"https://www.geoboundaries.org/api/current/gbOpen/{iso3}/{adm_level}/"
     meta = requests.get(api_url, timeout=30).json()
-    geojson_url = meta["gjDownloadURL"]
-
-    gdf = gpd.read_file(geojson_url)
+    gdf = gpd.read_file(meta["gjDownloadURL"])
     print(f"Loaded {iso3} {adm_level} boundary: {len(gdf)} feature(s), CRS={gdf.crs}")
     _boundary_cache[cache_key] = gdf
     return gdf
 
 
-# --- Source file registry for the two GDP variants Kummu v4 provides ---
+# Source file registry for the two GDP variants Kummu v4 provides
 _VARIANT_FILES = {
-    "total": "rast_gdpTot_1990_2024_30arcsec.tif",          # total GDP, PPP, per pixel
-    "percapita": "rast_adm0_gdp_perCapita_1990_2024.tif",   # GDP per capita, PPP, adm0-level
+    "total":     "rast_gdpTot_1990_2024_30arcsec.tif",
+    "percapita": "rast_adm0_gdp_perCapita_1990_2024.tif",
 }
 
 
+# ---------------------------------------------------------------------------
+# General-purpose extractor
+# ---------------------------------------------------------------------------
 def extract_country_gdp(country: str, year: int, tif_path: str = None, out_path: str = None,
                          band_years=(1990, 1995, 2000, 2005, 2010, 2015, 2020, 2024),
                          pad_deg: float = 0.05, adm_level: str = "ADM0",
                          gdp_path: str = None, plot: bool = False,
-                         variant: str = "total",
-                         mask_zero: bool = True, zero_value: float = 0):
+                         variant: str = "total", mask_zero: bool = True,
+                         zero_value: float = 0):
     """
     Extract a clipped, single-year GDP raster for any country by name or ISO3 code.
 
-    country:   country name ("Guinea") or ISO3 code ("GIN")
-    year:      year to extract, must be one of band_years (default: Kummu v4's 5-year steps)
-    tif_path:  path to the source multiband GeoTIFF. If None, built from gdp_path + variant.
-    out_path:  where to save the clipped GeoTIFF. If None, auto-named in gdp_path.
-    gdp_path:  folder containing the source file / where output is saved (uses the
-               global `gdp_path` variable from your session if not passed).
-    plot:      if True, shows a quick matplotlib preview after extraction.
-    variant:   "total" (default) for total GDP per pixel (summing pixels = country total),
-               or "percapita" for GDP per capita per pixel (summing pixels is meaningless —
-               use mean/median across valid pixels instead for a representative figure).
-    mask_zero: if True (default), pixels equal to `zero_value` are converted to
-               NoData before clipping/saving. Set False to keep raw zeros.
-    zero_value: the pixel value treated as "empty" when mask_zero=True (default 0).
-
-    Returns the clipped xarray DataArray.
+    country:   country name or ISO3 code (e.g. "NGA", "Nigeria")
+    year:      year to extract — must be one of band_years
+    gdp_path:  folder containing the source .tif and where output is saved
+    variant:   "total" (default) for total GDP per pixel,
+               "percapita" for GDP per capita per pixel
     """
     if variant not in _VARIANT_FILES:
         raise ValueError(f"variant must be one of {list(_VARIANT_FILES)}, got '{variant}'")
@@ -121,9 +116,9 @@ def extract_country_gdp(country: str, year: int, tif_path: str = None, out_path:
         suffix = "PerCapita" if variant == "percapita" else "PPP"
         out_path = os.path.join(gdp_path, f"GDP_{suffix}_{year}_{iso3}.tif")
 
-    # --- Reproject boundary to raster CRS if needed ---
     with rasterio.open(tif_path) as src:
         raster_crs = src.crs
+
     if boundary_gdf.crs != raster_crs:
         boundary_gdf = boundary_gdf.to_crs(raster_crs)
 
@@ -141,22 +136,18 @@ def extract_country_gdp(country: str, year: int, tif_path: str = None, out_path:
 
         if all(y is not None for y in tag_years) and len(tag_years) == n_bands:
             band_years = tag_years
-
         if len(band_years) != n_bands:
             raise ValueError(f"band_years has {len(band_years)} entries but file has {n_bands} bands.")
         if year not in band_years:
             raise ValueError(f"Year {year} not available. Bands correspond to: {band_years}")
 
         band_idx = band_years.index(year) + 1
-
         window = from_bounds(minx, miny, maxx, maxy, transform=src.transform)
         window = window.round_offsets().round_lengths()
-
         data = src.read(band_idx, window=window)
         window_transform = src.window_transform(window)
         nodata = src.nodata
 
-    # --- Convert zero-value pixels to NoData (replaces manual QGIS transparency step) ---
     data = data.astype("float32")
     if mask_zero:
         data[data == zero_value] = np.nan
@@ -169,20 +160,16 @@ def extract_country_gdp(country: str, year: int, tif_path: str = None, out_path:
     da_year = xr.DataArray(data, dims=("y", "x"), coords={"y": ys, "x": xs}, name="gdp")
     da_year = da_year.rio.write_crs(raster_crs, inplace=True)
     da_year = da_year.rio.write_nodata(nodata_out, inplace=True)
-
     da_clipped = da_year.rio.clip(boundary_gdf.geometry, boundary_gdf.crs, drop=True)
 
     vals = da_clipped.values
     n_valid = int(np.isfinite(vals).sum())
     if variant == "percapita":
-        mean_val = float(np.nanmean(vals)) if n_valid else float("nan")
-        median_val = float(np.nanmedian(vals)) if n_valid else float("nan")
-        print(f"{country} ({iso3}) {year}: {n_valid}/{vals.size} valid pixels, "
-              f"GDP per capita — mean = {mean_val:,.0f}, median = {median_val:,.0f}")
+        print(f"{country} ({iso3}) {year}: {n_valid} valid pixels, "
+              f"GDP/capita mean={float(np.nanmean(vals)):,.0f}, median={float(np.nanmedian(vals)):,.0f}")
     else:
-        total = float(np.nansum(vals))
-        print(f"{country} ({iso3}) {year}: {n_valid}/{vals.size} valid pixels, "
-              f"total GDP (sum of pixels) = {total:,.0f}")
+        print(f"{country} ({iso3}) {year}: {n_valid} valid pixels, "
+              f"total GDP={float(np.nansum(vals)):,.0f}")
 
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     da_clipped.rio.to_raster(out_path)
@@ -195,3 +182,57 @@ def extract_country_gdp(country: str, year: int, tif_path: str = None, out_path:
         plt.show()
 
     return da_clipped
+
+
+# ---------------------------------------------------------------------------
+# Batch extractor
+# ---------------------------------------------------------------------------
+def batch_extract_gdp(countries, years, gdp_path=None, adm_level="ADM0",
+                       pad_deg=0.05, plot=False, stop_on_error=False):
+    """
+    Run extract_country_gdp() for every (country, year) combination.
+    Returns a pandas DataFrame summarising results.
+    """
+    rows = []
+    for country in countries:
+        for year in years:
+            print(f"\n--- {country}, {year} ---")
+            try:
+                da = extract_country_gdp(country=country, year=year, gdp_path=gdp_path,
+                                          adm_level=adm_level, pad_deg=pad_deg, plot=plot)
+                vals = da.values
+                rows.append({
+                    "country": country, "year": year, "status": "ok",
+                    "total_gdp": float(pd.Series(vals.ravel()).sum(skipna=True)),
+                    "n_valid_pixels": int((vals == vals).sum()),
+                    "shape": da.shape, "error": None,
+                })
+            except Exception as e:
+                print(f"  FAILED: {e}")
+                rows.append({
+                    "country": country, "year": year, "status": "error",
+                    "total_gdp": None, "n_valid_pixels": None, "shape": None, "error": str(e),
+                })
+                if stop_on_error:
+                    raise
+
+    summary = pd.DataFrame(rows)
+    print("\n=== BATCH SUMMARY ===")
+    print(summary.to_string(index=False))
+    return summary
+
+
+# ---------------------------------------------------------------------------
+# Nigeria-specific extraction (NGA, 2024)
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    import sys
+    gdp_path = sys.argv[1] if len(sys.argv) > 1 else r"C:\path\to\GDP_data"
+
+    da_nga = extract_country_gdp(
+        country="NGA",
+        year=2024,
+        gdp_path=gdp_path,
+        out_path=os.path.join(gdp_path, "GDP_PPP_2024_NGA.tif"),
+    )
+    print("\nTotal Nigeria GDP 2024 (sum of pixels):", float(da_nga.sum()))
