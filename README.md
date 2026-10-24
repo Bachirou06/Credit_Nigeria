@@ -1,5 +1,12 @@
-# CREDIT_layer
+# CREDIT_layer — Nigeria
 The **Creating the Custom Residential Electricity Demand Indicative Target (CREDIT)** layer as presented in this [open access publication](https://www.mdpi.com/1996-1073/12/7/1395).
+
+> **This repository has been adapted for Nigeria (NGA).**
+> Original code was developed for Guinea (GIN). Key changes: country boundary → NGA, admin-2 LGA level (~774 LGAs),
+> UTM projection → EPSG:32632 (WGS84 / UTM zone 32N), GDP raster → Kummu v4 2024 clipped to Nigeria,
+> MTF demand targets from ESMAP "Nigeria: Beyond Connections" (2018), HH size ~5.1 people:
+> min 0.9 kWh/capita/year (Tier 1), max 588 kWh/capita/year (Tier 5).
+> Poverty data: OPHI MPI at LGA (ADM2) level, available on HDX (`nigeria-mpi`).
 
 Predicting electricity demand in currently un-electrified settlement is a challenge. Many energy access efforts use the multi-tier framework (MTF) as a point of reference; OnSSET in particular, uses this approach as it provides a good basis of (investment) comparison between different levels of access. Access tiers are assigned to settlements based on selection criteria; the most common approach (also adopted in GEP) is to assign tier-targets to urban/rural settlements respectively. This approach allows for limited spatial allocation of targets let alone it does not take into account newly available spatial information.
 
