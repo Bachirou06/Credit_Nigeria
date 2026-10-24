@@ -10,7 +10,7 @@ Boundary fetched automatically from the geoBoundaries API — no local shapefile
 
 Usage (general):
     from extract_gdp import extract_country_gdp, batch_extract_gdp
-    da = extract_country_gdp("NGA", 2024, gdp_path=r"C:\...\GDP_data")
+    da = extract_country_gdp("NGA", 2024, gdp_path=r"C:\\...\\GDP_data")
 
 Usage (Nigeria-specific, run as script):
     python extract_gdp.py
